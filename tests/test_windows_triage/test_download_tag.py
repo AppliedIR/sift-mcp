@@ -1,10 +1,11 @@
 """The installed triage release tag, and the download's count check.
 
-Each case installs from a local fixture release: ``_fetch_release``, ``_get_asset_url``
-and ``_download_asset`` are patched to serve the fixture dir's files, and the retry
-sleep is patched out. The fixture DBs are a few rows each, so a case that needs a
-passing verify sets the manifest's counts to the fixture's counts (or, on a tree with
-the row floor constants and no manifest, sets those floors to 1).
+Each case installs from a local fixture release: ``_fetch_release``,
+``_newest_release``, ``_get_asset_url`` and ``_download_asset`` are patched to serve
+the fixture dir's files, and the retry sleep is patched out. The fixture DBs are a few
+rows each, so a case that needs a passing verify sets the manifest's counts to the
+fixture's counts (or, on a tree with the row floor constants and no manifest, sets
+those floors to 1).
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from windows_triage import release_manifest
 from windows_triage.db.schemas import CONTEXT_SCHEMA, KNOWN_GOOD_SCHEMA
 from windows_triage.scripts import download_databases as dd
 
-TAG = release_manifest.RELEASE_TAG  # the only release the download installs
+TAG = release_manifest.RELEASE_TAG  # the release whose exact counts the manifest holds
 OTHER_TAG = "triage-db-v2099.01.01"
 PRIOR_TAG = "triage-db-v2098.01.01"
 STAGE = ".triage-db-new-*"
@@ -134,6 +135,7 @@ def _serve(monkeypatch, release: Path, tag_name: str = TAG) -> list[float]:
         shutil.copyfile(url, dest)
 
     monkeypatch.setattr(dd, "_fetch_release", fetch_release)
+    monkeypatch.setattr(dd, "_newest_release", lambda: fetch_release(None))
     monkeypatch.setattr(dd, "_get_asset_url", get_asset_url)
     monkeypatch.setattr(dd, "_download_asset", download_asset)
     monkeypatch.setattr(dd.time, "sleep", sleeps.append)
@@ -321,6 +323,7 @@ _KILL_DRIVER = textwrap.dedent(
         signal.pause()
 
     dd._fetch_release = fetch_release
+    dd._newest_release = lambda: fetch_release(None)
     dd._get_asset_url = get_asset_url
     dd._download_asset = download_asset
     dd._decompress_zst = held_decompress
@@ -366,7 +369,8 @@ def test_kill_mid_decompress_leaves_prior_install(tmp_path):
 
 
 def test_release_without_checksums_fails_with_no_tag(tmp_path, monkeypatch, capsys):
-    """(d) No checksums.sha256: the download fails as today (rc 1) and no tag file is written."""
+    """(d) No checksums.sha256: the release lacks one of this version's files, so it is
+    refused before any download (rc 1) and no tag file is written."""
     dbs = _fixture_dbs(tmp_path / "dbs")
     release = _release_dir(tmp_path / "release", dbs, checksums="none")
     sleeps = _serve(monkeypatch, release)
@@ -377,9 +381,8 @@ def test_release_without_checksums_fails_with_no_tag(tmp_path, monkeypatch, caps
         dd.main()
     assert exc.value.code == 1
     out = capsys.readouterr().out
-    assert "Asset not found in release: checksums.sha256" in out
-    assert "All download attempts failed." in out
-    assert len(sleeps) == dd.MAX_ATTEMPTS - 1
+    assert "with this version's files" in out and "Nothing was downloaded" in out, out
+    assert sleeps == []
     assert not (dest / TAG_FILE).exists()
 
 
@@ -398,29 +401,16 @@ def test_checksums_missing_a_db_leaves_prior_install(tmp_path, monkeypatch, caps
     assert _stages(dest) == []
 
 
-def test_release_with_another_tag_is_refused_before_any_write(
-    tmp_path, monkeypatch, capsys
-):
-    """A release whose tag is not the pinned one is refused before any download:
-    its DBs' counts are not the ones this version checks."""
+def test_release_with_another_tag_is_checked_against_the_floors(tmp_path, monkeypatch):
+    """A release other than RELEASE_TAG installs when each table reaches its floor:
+    one row short of RELEASE_TAG's counts still installs, tagged with its own tag."""
     dbs = _fixture_dbs(tmp_path / "dbs")
     _serve(monkeypatch, _release_dir(tmp_path / "release", dbs), tag_name=OTHER_TAG)
-    _set_counts(monkeypatch, dbs)
-    fetched: list[str] = []
-    served = dd._download_asset
-
-    def download_asset(url, path):
-        fetched.append(url)
-        served(url, path)
-
-    monkeypatch.setattr(dd, "_download_asset", download_asset)
+    _set_counts(monkeypatch, dbs, off_by_one="known_good.db:baseline_files")
     dest = tmp_path / "dest"
-    before = _plant_prior(dest, tmp_path)
-    assert dd.download_databases(dest) is False
-    out = capsys.readouterr().out
-    assert OTHER_TAG in out and TAG in out, out
-    assert fetched == [], "a refused release was downloaded"
-    assert _files(dest, before) == before
+    _plant_prior(dest, tmp_path)
+    assert dd.download_databases(dest) is True
+    assert _reader()(dest) == OTHER_TAG
 
 
 def test_licence_failure_leaves_prior_install(tmp_path, monkeypatch, capsys):

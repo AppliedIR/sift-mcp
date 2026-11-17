@@ -4,8 +4,8 @@ One module owns what a release holds:
 
 - ``DATABASES``: each DB file name, and whether ``download_databases`` fetches it by
   default (the registry DB is opt-in).
-- ``RELEASE_TAG``: the published release ``download_databases`` installs, fetched
-  by that exact tag; a newer data release comes with a newer version of this file.
+- ``RELEASE_TAG``: the published release ``COUNTS`` holds. ``download_databases``
+  installs the newest usable release, which may be newer than this one.
 - ``COUNTS``: per DB, its data tables (every table ``schemas.py`` declares for it,
   minus ``sources``) and the row count of each in that release.
 - ``FED_BY``: for each DB a ``--skip-*`` option can build in part, the tables each
@@ -14,9 +14,10 @@ One module owns what a release holds:
 - ``LICENCE_ASSET``: the release file holding every source's licence files;
   ``LICENCE_DIR`` and ``LICENCE_FILE_MAX`` are where they go and their size cap.
 
-Two rules read ``COUNTS``. A downloaded DB is the release's own file, so its
-tables must equal the counts exactly (``check_downloaded``). A local build must
-reach each table's floor, half the release's count rounded down (``check_floors``).
+Two rules read ``COUNTS``. A DB downloaded from RELEASE_TAG is its own file, so its
+tables must equal the counts exactly (``check_downloaded``). One from another
+release, or a local build, must reach each table's floor: half the release's
+count rounded down (``check_floors``).
 Both read ``COUNTS`` when called, never a copy taken at import.
 """
 

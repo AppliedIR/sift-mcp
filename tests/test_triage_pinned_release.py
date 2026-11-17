@@ -1,12 +1,12 @@
-"""The triage download installs the data release this code's manifest names.
+"""Which triage data release the download installs.
 
-The manifest holds one release's per-table counts, and a downloaded DB must match
-them exactly. So the download must fetch that release by its tag, never the newest
-triage-db-* release, and refuse any other tag. Each case serves a local mirror: a
+By default the newest usable triage-db-* release; ``--tag`` names one. The manifest
+holds RELEASE_TAG's per-table counts: its DBs must match them exactly, any other
+release's must reach the floors (half the counts). Each case serves a local mirror: a
 sitecustomize on the python the download runs under replaces ``urlopen`` with a
 reader of the mirror dir, which holds each release's assets and the release list,
 newest first, as the GitHub API would. The pinned release's counts are set to its
-fixture DBs' counts; a newer release's DBs hold one more row, so its counts differ.
+fixture DBs' counts; a newer release's DBs hold one more row, so only the floors pass.
 The download runs as the installers run it: as a module, directly, and through
 setup-sift.sh's and quickstart-lite.sh's own download blocks.
 """
@@ -204,12 +204,12 @@ def _bash(tmp_path: Path, mirror: Path, lines: list[str]) -> list[str]:
 # --- the download module ----------------------------------------------------------
 
 
-def test_a_newer_release_is_passed_over_for_the_pinned_one(tmp_path):
+def test_the_newest_release_installs_by_default(tmp_path):
     mirror = _mirror(tmp_path)
     out, dest = _download(tmp_path, mirror)
     assert out.returncode == 0, out.stdout[-3000:] + out.stderr[-3000:]
-    assert _installed(dest) == PINNED
-    assert LIST_URL not in _requests(mirror), "the download read the release list"
+    assert _installed(dest) == NEWER
+    assert LIST_URL in _requests(mirror), "the download did not read the release list"
 
 
 def test_the_pinned_release_alone_installs(tmp_path):
@@ -219,14 +219,11 @@ def test_the_pinned_release_alone_installs(tmp_path):
     assert _installed(dest) == PINNED
 
 
-def test_another_tag_is_refused_naming_the_pinned_tag(tmp_path):
+def test_another_tag_installs_checked_against_the_floors(tmp_path):
     mirror = _mirror(tmp_path)
     out, dest = _download(tmp_path, mirror, "--tag", NEWER)
-    said = out.stdout + out.stderr
-    assert out.returncode == 1, said[-3000:]
-    assert PINNED in said and "newer Valhuntir" in said, said[-3000:]
-    assert _requests(mirror) == [], "a refused tag was fetched"
-    assert not (dest / "context.db").exists() and _installed(dest) is None
+    assert out.returncode == 0, out.stdout[-3000:] + out.stderr[-3000:]
+    assert _installed(dest) == NEWER
 
 
 def test_the_pinned_tag_by_name_installs(tmp_path):
@@ -289,16 +286,16 @@ def _failed_line(lines: list[str]) -> list[str]:
     ]
 
 
-def test_setup_sift_installs_the_pinned_release(tmp_path):
+def test_setup_sift_installs_the_newest_release(tmp_path):
     lines, data = _setup_sift(tmp_path, _mirror(tmp_path))
     assert "[OK] Databases downloaded and verified" in lines, lines
-    assert _installed(data) == PINNED
+    assert _installed(data) == NEWER
 
 
 def test_setup_sift_reports_a_failed_download_as_failed(tmp_path):
     """A download whose DB fails its count check: setup-sift says FAILED and that
     the installed databases were not changed, and nothing is installed."""
-    lines, data = _setup_sift(tmp_path, _mirror(tmp_path, short=True))
+    lines, data = _setup_sift(tmp_path, _mirror(tmp_path, newer=False, short=True))
     assert "[OK] Databases downloaded and verified" not in lines, lines
     failed = _failed_line(lines)
     assert failed and "the installed databases were not changed" in failed[0], lines
@@ -306,17 +303,17 @@ def test_setup_sift_reports_a_failed_download_as_failed(tmp_path):
     assert not (data / "context.db").exists(), "an unverified DB was installed"
 
 
-def test_quickstart_lite_installs_the_pinned_release(tmp_path):
+def test_quickstart_lite_installs_the_newest_release(tmp_path):
     data = tmp_path / "triage-db"
     lines = _quickstart_lite(tmp_path, _mirror(tmp_path), data)
     assert [ln for ln in lines if ln.startswith("[WARN]")] == [], lines
-    assert _installed(data) == PINNED
+    assert _installed(data) == NEWER
 
 
 def test_quickstart_lite_reports_a_failed_download_as_failed(tmp_path):
     """The same failed download through quickstart-lite: FAILED, nothing installed."""
     data = tmp_path / "triage-db"
-    lines = _quickstart_lite(tmp_path, _mirror(tmp_path, short=True), data)
+    lines = _quickstart_lite(tmp_path, _mirror(tmp_path, newer=False, short=True), data)
     failed = _failed_line(lines)
     assert failed and "the installed databases were not changed" in failed[0], lines
     assert _installed(data) is None
@@ -335,7 +332,7 @@ def test_quickstart_lite_failed_rebuild_keeps_the_installed_databases(tmp_path):
         conn.commit()
         conn.close()
     before = {p.name: p.read_bytes() for p in sorted(data.iterdir())}
-    mirror = _mirror(tmp_path, short=True)
+    mirror = _mirror(tmp_path, newer=False, short=True)
     lines = _quickstart_lite(tmp_path, mirror, data, rebuild=True)
     after = {p.name: p.read_bytes() for p in sorted(data.iterdir())}
     assert after == before, "a failed rebuild changed the installed databases"

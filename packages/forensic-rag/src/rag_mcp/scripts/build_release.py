@@ -12,6 +12,9 @@ The script:
 3. Creates rag-index.tar.zst (zstd level 1 compression)
 4. Generates rag-checksums.sha256
 5. Prints upload instructions
+
+Installs take the newest non-prerelease release with their asset names: a data
+format change renames the assets.
 """
 
 from __future__ import annotations

@@ -23,6 +23,9 @@
 #     TAG="triage-db-v$(date -u +%Y.%m.%d)"
 #     gh release create "$TAG" --latest=false release/*.zst release/checksums.sha256 release/metadata.json --title "Triage Databases $TAG" --notes "Pre-built triage databases for windows-triage"
 #
+# Installs take the newest non-prerelease release with their asset names: a data
+# format change renames the assets.
+#
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

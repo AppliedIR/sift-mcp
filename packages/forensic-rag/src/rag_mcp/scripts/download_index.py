@@ -5,6 +5,7 @@ avoiding the 1-3 hour build-from-source step on first install.
 
 Usage:
     python -m rag_mcp.scripts.download_index [--dest DIR] [--tag TAG]
+    python -m rag_mcp.scripts.download_index --check [--dest DIR]
 
 Authentication:
     For private repos, set GITHUB_TOKEN or have ``gh`` CLI authenticated.
@@ -32,6 +33,8 @@ MAX_ATTEMPTS = 3
 CHUNK_SIZE = 1024 * 1024  # 1 MB
 TAG_PREFIX = "rag-index-"
 STATE_NAME = "sources_state.json"
+STAGE_PREFIX = ".rag-new-"  # the verify-then-swap dir, in the install dir
+UNPACKED = 2.25  # the index unpacks to about this times its download
 # Where the install puts the bundle's state until the index verifies
 STAGED_STATE_NAME = "sources_state.json.part"
 
@@ -60,12 +63,15 @@ def _github_headers() -> dict[str, str]:
     return headers
 
 
-def _fetch_release(tag: str = "latest") -> dict:
-    """Fetch release metadata from GitHub API.
+def _usable(release: dict) -> bool:
+    """Not a prerelease, with both assets (a format change renames them)."""
+    names = {a.get("name") for a in release.get("assets", [])}
+    return not release.get("prerelease") and all(a in names for a in ASSETS)
 
-    When tag is "latest", finds the most recent rag-index-* release
-    that contains the expected assets. Otherwise fetches the exact tag.
-    """
+
+def _fetch_release(tag: str = "latest") -> dict | None:
+    """The newest usable rag-index-* release (GitHub lists the newest first), or
+    the exact tag's; None when it isn't usable."""
     headers = _github_headers()
 
     if tag == "latest":
@@ -73,24 +79,33 @@ def _fetch_release(tag: str = "latest") -> dict:
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=30) as resp:
             releases = json.loads(resp.read())
-            matching = [
-                r
-                for r in releases
-                if r["tag_name"].startswith(TAG_PREFIX)
-                and any(a["name"] == "rag-index.tar.zst" for a in r.get("assets", []))
-            ]
-            if matching:
-                return matching[0]  # GitHub returns most recent first
-            raise ValueError(
-                "No RAG index releases found. "
-                f"Expected releases with tag prefix '{TAG_PREFIX}' "
-                "containing rag-index.tar.zst assets."
-            )
-    else:
-        url = f"https://api.github.com/repos/{REPO}/releases/tags/{tag}"
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read())
+        matching = [r for r in releases if r["tag_name"].startswith(TAG_PREFIX)]
+        return next((r for r in matching if _usable(r)), None)
+    url = f"https://api.github.com/repos/{REPO}/releases/tags/{tag}"
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        release = json.loads(resp.read())
+    return release if _usable(release) else None
+
+
+def _download_bytes(rel: dict) -> int:
+    return sum(a.get("size", 0) for a in rel.get("assets", []) if a["name"] in ASSETS)
+
+
+def check(dest: Path) -> dict:
+    """What --check prints; a GitHub error raises."""
+    release = _fetch_release() or {}
+    try:
+        meta = json.loads((dest / "metadata.json").read_text(encoding="utf-8"))
+        installed = meta.get("bundle_tag") or None
+    except (OSError, ValueError, AttributeError):
+        installed = None
+    return {
+        "installed": installed,
+        "absent": not (dest / "chroma").is_dir(),
+        "newest": release.get("tag_name"),
+        "download_bytes": _download_bytes(release),
+    }
 
 
 def _get_asset_url(release: dict, asset_name: str) -> str | None:
@@ -286,6 +301,41 @@ def _verify_index(data_dir: Path) -> bool:
     return True
 
 
+def _clean_stages(dest: Path) -> None:
+    """Remove stopped installs' stage dirs, except one holding a failed undo's old/."""
+    for stage in dest.glob(f"{STAGE_PREFIX}*"):
+        if stage.is_dir() and not stage.is_symlink() and not (stage / "old").exists():
+            shutil.rmtree(stage, ignore_errors=True)
+
+
+def _swap_in(dest: Path, stage: Path) -> str:
+    """Move dest's top-level bundle members to stage/old, the stage's into dest; a
+    failed move undoes them all. Returns "installed", "undone" or "kept" (undo
+    failed too)."""
+    from .. import constants
+
+    old = stage / "old"
+    old.mkdir()
+    done = []
+    try:
+        for name in dict.fromkeys(m.split("/")[0] for m in constants.BUNDLE_MEMBERS):
+            for src, dst in ((dest / name, old / name), (stage / name, dest / name)):
+                if src.exists() or src.is_symlink():
+                    os.replace(src, dst)
+                    done.append((src, dst))
+    except OSError as e:
+        print(f"\nInstalling into {dest} failed: {e}")
+        try:
+            for src, dst in reversed(done):
+                os.replace(dst, src)
+        except OSError as undo:
+            print(f"Undoing it failed too: {undo}. The files it replaced are in {old}.")
+            return "kept"
+        print("The installed index was not changed.")
+        return "undone"
+    return "installed"
+
+
 def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
     """Download and verify RAG index bundle.
 
@@ -332,9 +382,16 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
     except Exception as e:
         print(f"Failed to fetch release: {e}")
         return False
+    if release is None:
+        print(f"No usable {TAG_PREFIX}* release. Nothing was downloaded or changed.")
+        return False
 
     tag_name = release.get("tag_name", tag)
     print(f"Release: {tag_name}")
+    need = int(_download_bytes(release) * (1 + UNPACKED))
+    if shutil.disk_usage(dest).free < need:
+        print(f"Not enough free space ({need:,} bytes). Nothing was changed.")
+        return False
 
     # The examiner's own documents live in their own store, which the bundle
     # never replaces. Bring it in line with the knowledge folder and commit it
@@ -348,9 +405,11 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
         print("and download again.")
         return False
 
-    staged = dest / STAGED_STATE_NAME
+    _clean_stages(dest)
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        temp_dir = Path(tempfile.mkdtemp(prefix="rag-index-"))
+        # In dest: the swap is renames; next run's _clean_stages removes a killed one
+        stage = Path(tempfile.mkdtemp(prefix=STAGE_PREFIX, dir=dest))
+        staged, swap = stage / STAGED_STATE_NAME, None
         try:
             # Download assets
             print(f"\nDownloading (attempt {attempt}/{MAX_ATTEMPTS})...")
@@ -362,7 +421,7 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
                     download_ok = False
                     continue
                 try:
-                    _download_asset(url, temp_dir / asset_name)
+                    _download_asset(url, stage / asset_name)
                 except Exception as e:
                     print(f"  Download failed for {asset_name}: {e}")
                     download_ok = False
@@ -378,13 +437,17 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
 
             # Verify checksums
             print("\nVerifying checksums...")
-            if not _verify_checksums(temp_dir):
+            if not _verify_checksums(stage):
                 if attempt < MAX_ATTEMPTS:
                     wait = attempt * 5
                     print(f"  Checksum mismatch. Retrying in {wait}s...")
                     time.sleep(wait)
                     continue
                 print("Checksum verification failed after all attempts.")
+                return False
+            sums = stage / "rag-checksums.sha256"
+            if sums.is_file() and "rag-index.tar.zst" not in sums.read_text().split():
+                print(f"{sums.name} does not list the index. Nothing was changed.")
                 return False
 
             # Extract bundle
@@ -394,7 +457,7 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
             print("\nExtracting bundle...")
             staged.unlink(missing_ok=True)
             skipped = _extract_bundle(
-                temp_dir / "rag-index.tar.zst", dest, staged_state=STAGED_STATE_NAME
+                stage / "rag-index.tar.zst", stage, staged_state=STAGED_STATE_NAME
             )
             for name in skipped:
                 print(f"  Skipped (not part of the shipped index): {name}")
@@ -408,16 +471,14 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
 
             # Verify index
             print("\nVerifying index...")
-            if not _verify_index(dest):
+            if not _verify_index(stage):
                 print("Index verification failed.")
                 return False
             if staged.exists():
-                os.replace(staged, dest / STATE_NAME)
-            else:  # the old index's state is not the new index's
-                (dest / STATE_NAME).unlink(missing_ok=True)
+                os.replace(staged, stage / STATE_NAME)
 
             # Update metadata with download info
-            metadata_path = dest / "metadata.json"
+            metadata_path = stage / "metadata.json"
             if metadata_path.exists():
                 try:
                     with open(metadata_path, encoding="utf-8") as f:
@@ -428,6 +489,9 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
                         json.dump(metadata, f, indent=2)
                 except (OSError, json.JSONDecodeError):
                     pass
+            swap = _swap_in(dest, stage)
+            if swap != "installed":
+                return False
 
             # Bundled knowledge files newer than the bundle's copies
             if _bundled_drift(dest):
@@ -451,8 +515,9 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
             return True
 
         finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
             staged.unlink(missing_ok=True)
+            if swap != "kept":
+                shutil.rmtree(stage, ignore_errors=True)
 
     return False
 
@@ -511,12 +576,23 @@ def main() -> None:
         default="latest",
         help="Release tag to download (default: latest)",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Print the installed and newest release as JSON; download nothing",
+    )
     args = parser.parse_args()
 
     from ..utils import resolve_data_dir
 
     dest = resolve_data_dir(args.dest)
 
+    if args.check:
+        try:
+            print(json.dumps(check(Path(dest))))
+        except Exception as e:  # GitHub unreachable or rate-limited, a bad reply
+            sys.exit(f"Could not check for a newer RAG index: {e}")
+        sys.exit(0)
     if download_index(dest, args.tag):
         sys.exit(0)
     else:

@@ -5,12 +5,13 @@ Python implementation that works inside the Valhuntir venv.
 
 Usage:
     python -m windows_triage.scripts.download_databases [--dest DIR] [--tag TAG]
+    python -m windows_triage.scripts.download_databases --check [--dest DIR]
 
-It installs the release ``release_manifest.RELEASE_TAG`` names, fetched by that
-exact tag, never the newest triage-db-* release: each downloaded DB must match
-that release's counts exactly. Everything is downloaded and checked in a
-staging dir inside DEST first and only then swapped into place, so a failed
-download or check leaves the installed databases as they were.
+It installs the newest non-prerelease triage-db-* release with this version's
+asset names (or --tag's): RELEASE_TAG's DBs must match its counts exactly, any
+other release's must reach the floors. Everything is downloaded and checked in a
+staging dir inside DEST and only then swapped in, so a failed download or check
+leaves the installed databases as they were.
 
 Authentication:
     For private repos, set GITHUB_TOKEN or have ``gh`` CLI authenticated.
@@ -37,6 +38,7 @@ from windows_triage import release_manifest
 
 REPO = "AppliedIR/sift-mcp"
 CHECKSUMS = "checksums.sha256"
+METADATA = "metadata.json"  # its size_bytes are the unpacked sizes: a hint only
 ASSETS = (
     *(f"{name}.zst" for name in release_manifest.default_databases()),
     CHECKSUMS,
@@ -77,6 +79,43 @@ def _fetch_release(tag: str) -> dict:
     req = urllib.request.Request(url, headers=_github_headers())
     with urllib.request.urlopen(req, timeout=30) as resp:
         return json.loads(resp.read())
+
+
+def _usable(release: dict) -> bool:
+    """Not a prerelease, with every asset this version fetches (a format change
+    renames them, so older code never selects that release)."""
+    names = {a.get("name") for a in release.get("assets", [])}
+    return not release.get("prerelease") and all(a in names for a in ASSETS)
+
+
+def _newest_release() -> dict | None:
+    """The newest usable release (GitHub lists the newest first), or None."""
+    url = f"https://api.github.com/repos/{REPO}/releases?per_page=100"
+    req = urllib.request.Request(url, headers=_github_headers())
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return next((r for r in json.loads(resp.read()) if _usable(r)), None)
+
+
+def _sizes(release: dict, names: list[str]) -> int:
+    return sum(
+        a.get("size", 0) for a in release.get("assets", []) if a.get("name") in names
+    )
+
+
+def _unpacked_bytes(release: dict, db_names: list[str]) -> int:
+    """A size hint: an unreadable metadata.json gives 0 rather than failing an install
+    the download's checks would pass; the pre-check then covers the download only."""
+    url = _get_asset_url(release, METADATA)
+    if not url:
+        return 0
+    headers = {**_github_headers(), "Accept": "application/octet-stream"}
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            dbs = json.loads(resp.read(CHUNK_SIZE))["databases"]
+        return sum(int(dbs[name]["size_bytes"]) for name in db_names)
+    except (OSError, ValueError, KeyError, TypeError):
+        return 0
 
 
 def _get_asset_url(release: dict, asset_name: str) -> str | None:
@@ -199,6 +238,21 @@ def read_installed_tag(dest_dir: str | Path) -> str | None:
     return tag_name
 
 
+def check(dest_dir: str | Path) -> dict:
+    """What --check prints; a GitHub error raises."""
+    dest = Path(dest_dir)
+    release = _newest_release() or {}
+    paths = [dest / name for name in release_manifest.default_databases()]
+    return {
+        "installed": read_installed_tag(dest),
+        "absent": any(not p.is_file() or p.stat().st_size == 0 for p in paths),
+        "newest": release.get("tag_name"),
+        "download_bytes": _sizes(
+            release, [*ASSETS, release_manifest.LICENCE_ASSET, METADATA]
+        ),
+    }
+
+
 def _licence_members(tar: tarfile.TarFile):
     """Yield (relative path, bytes) for each licence file in the asset; raise
     ValueError naming any member that is not a plain ``<source>/<file>``."""
@@ -315,10 +369,9 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
 
     Args:
         dest_dir: Directory to place the decompressed .db files.
-        tag: GitHub release tag. Only the release the manifest names
-            (``release_manifest.RELEASE_TAG``, the default) is installed: its
-            counts are the ones each DB is checked against. Any other tag is
-            refused before anything is fetched.
+        tag: GitHub release tag; by default the newest triage-db-* release that
+            is not a prerelease and carries this version's asset names. A tag
+            naming any other release is refused before anything is downloaded.
 
     Returns:
         True on success, False on failure. On failure the installed databases,
@@ -326,33 +379,28 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
         too: then the replaced files are kept in the staging dir's old/ and
         the output names it.
     """
-    pinned = release_manifest.RELEASE_TAG
-    if tag is not None and tag != pinned:
-        print(
-            f"Release {tag} is refused: this version installs {pinned}, the "
-            "release its row counts are for. A newer data release comes with a "
-            "newer Valhuntir."
-        )
-        return False
-    tag = pinned
     dest = Path(dest_dir)
     dest.mkdir(parents=True, exist_ok=True)
 
     print(f"Fetching release info from {REPO}...")
     try:
-        release = _fetch_release(tag)
+        release = _newest_release() if tag is None else _fetch_release(tag)
     except Exception as e:
         print(f"Failed to fetch release: {e}")
         return False
-
-    tag_name = release.get("tag_name", tag)
-    print(f"Release: {tag_name}")
-    if tag_name != pinned:
+    if release is None or not _usable(release):
+        which = "No release is" if tag is None else f"Release {tag} is not"
         print(
-            f"Release {tag_name} is refused: this version installs {pinned}. Nothing "
-            "was downloaded; the installed databases were not changed."
+            f"{which} a triage-db-* release with this version's files (not a "
+            "prerelease). Nothing was downloaded or changed."
         )
         return False
+
+    tag_name = release["tag_name"]
+    print(f"Release: {tag_name}")
+    check_db = release_manifest.check_floors  # RELEASE_TAG: its exact counts
+    if tag_name == release_manifest.RELEASE_TAG:
+        check_db = release_manifest.check_downloaded
 
     _clean_stages(dest)
 
@@ -361,10 +409,16 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
     if _get_asset_url(release, release_manifest.LICENCE_ASSET):
         wanted.append(release_manifest.LICENCE_ASSET)
     db_names = [a.removesuffix(".zst") for a in ASSETS if a.endswith(".db.zst")]
+    need = _sizes(release, wanted) + _unpacked_bytes(release, db_names)
+    if shutil.disk_usage(dest).free < need:
+        print(f"Not enough free space ({need:,} bytes). Nothing was changed.")
+        return False
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        temp_dir = Path(tempfile.mkdtemp(prefix="triage-db-"))
-        stage = None
+        # All in a stage dir in dest: the swap is renames, the next run's
+        # _clean_stages removes a killed run's files, and the installed files are
+        # untouched until every DB and the licences pass.
+        stage = Path(tempfile.mkdtemp(prefix=STAGE_PREFIX, dir=dest))
         swap = None
         try:
             # Download assets
@@ -377,7 +431,7 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
                     download_ok = False
                     continue
                 try:
-                    _download_asset(url, temp_dir / asset_name)
+                    _download_asset(url, stage / asset_name)
                 except Exception as e:
                     print(f"  Download failed for {asset_name}: {e}")
                     download_ok = False
@@ -393,7 +447,7 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
 
             # Verify checksums
             print("\nVerifying checksums...")
-            listed = _verify_checksums(temp_dir)
+            listed = _verify_checksums(stage)
             if listed is None:
                 if attempt < MAX_ATTEMPTS:
                     wait = attempt * 5
@@ -411,13 +465,9 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
                 )
                 return False
 
-            # Decompress and check in a stage dir in dest (the same filesystem, so
-            # the swap is renames). The installed files are not touched until every
-            # DB and the licences pass; during the swap dest holds both sets.
-            stage = Path(tempfile.mkdtemp(prefix=STAGE_PREFIX, dir=dest))
             print("\nDecompressing...")
             for db_name in db_names:
-                zst_path = temp_dir / f"{db_name}.zst"
+                zst_path = stage / f"{db_name}.zst"
                 db_path = stage / db_name
                 print(f"  {db_name}...", end="", flush=True)
                 _decompress_zst(zst_path, db_path)
@@ -428,11 +478,11 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
             print("\nVerifying databases...")
             ok = True
             for db_name in db_names:
-                errors = release_manifest.check_downloaded(db_name, stage / db_name)
+                errors = check_db(db_name, stage / db_name)
                 for error in errors:
                     print(f"  {error}")
                 if not errors:
-                    print(f"  {db_name}: every table matches the release's counts")
+                    print(f"  {db_name}: every table passed")
                 ok &= not errors
 
             if not ok:
@@ -442,7 +492,7 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
             licences = release_manifest.LICENCE_ASSET in wanted
             if licences:
                 try:
-                    _stage_licences(temp_dir / release_manifest.LICENCE_ASSET, stage)
+                    _stage_licences(stage / release_manifest.LICENCE_ASSET, stage)
                 except (OSError, ValueError, tarfile.TarError) as e:
                     print(f"\nLicence install failed: {e}")
                     return False
@@ -456,8 +506,7 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
             return True
 
         finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            if stage is not None and swap != "kept":
+            if swap != "kept":
                 shutil.rmtree(stage, ignore_errors=True)
 
     return False
@@ -476,9 +525,14 @@ def main() -> None:
         "--tag",
         default=None,
         help=(
-            f"Release tag to download; only {release_manifest.RELEASE_TAG}, "
-            "the release this version's counts are for, is accepted (default)"
+            "Release tag to download, a triage-db-* release with this version's "
+            "files (default: the newest)"
         ),
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Print the installed and newest release as JSON; download nothing",
     )
     args = parser.parse_args()
 
@@ -489,6 +543,12 @@ def main() -> None:
         pkg_root = Path(__file__).resolve().parent.parent.parent.parent
         dest = pkg_root / "data"
 
+    if args.check:
+        try:
+            print(json.dumps(check(dest)))
+        except Exception as e:  # GitHub unreachable or rate-limited, a bad reply
+            sys.exit(f"Could not check for newer triage databases: {e}")
+        sys.exit(0)
     if download_databases(dest, args.tag):
         sys.exit(0)
     else:
