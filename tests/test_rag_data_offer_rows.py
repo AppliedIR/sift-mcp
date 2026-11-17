@@ -6,7 +6,8 @@ without this version's assets is refused before any download, the download is
 checked for free space first (after a killed run's stage is removed), and every
 failed install, a Ctrl-C in the swap included, leaves the installed index
 as it was with no stage left behind, and a real Chroma index (when chromadb is
-installed) is swapped in and refreshed in place. Synthetic bundles: the GitHub API is
+installed) is swapped in and refreshed in place. A Ctrl-C just after any move, in
+this swap or the triage DBs', is undone too. Synthetic bundles: the GitHub API is
 served from a local listing through ``urlopen``; the asset download, the index
 check, the examiner store and the drift check are stubbed. The module is loaded
 from its file, because CI doesn't install forensic-rag.
@@ -501,6 +502,80 @@ def test_d6_a_ctrl_c_in_the_undo_keeps_the_stage_with_the_old_index(
     assert (stages[0] / "old/chroma/chroma.sqlite3").read_bytes() == (
         before["chroma/chroma.sqlite3"]
     )
+
+
+# --- D-6 (both legs): a Ctrl-C just after any move in the swap is undone ------------
+
+
+def _rag_swap(request, root: Path):
+    """The RAG swap of a stage holding every bundle member over an install holding
+    every one: (dest, the swap, the line an undone swap prints)."""
+    mod = request.getfixturevalue("rag").mod
+    dest, stage = root / "dest", root / "stage"
+    for side in (dest, stage):
+        for m in sys.modules[f"{PKG}.constants"].BUNDLE_MEMBERS:
+            f = side / m if "." in m else side / m / "f"
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(f"{side.name} {m}")
+    return dest, lambda: mod._swap_in(dest, stage), "installed index was not changed"
+
+
+def _triage_swap(request, root: Path):
+    """The triage swap of two DBs and the licences over an install of them with a tag
+    file and a DB journal: (dest, the swap, the line an undone swap prints)."""
+    from windows_triage.scripts import download_databases as dd
+
+    dest, stage = root / "dest", root / "stage"
+    names = ["a.db", "b.db"]
+    for side in (dest, stage):
+        for name in (*names, f"{dd.release_manifest.LICENCE_DIR}/f"):
+            (side / name).parent.mkdir(parents=True, exist_ok=True)
+            (side / name).write_text(f"{side.name} {name}")
+    (dest / dd.TAG_FILE).write_text("the installed tag")
+    (dest / "a.db-wal").write_text("the installed DB's journal")
+
+    def swap():
+        return dd._swap_in(dest, stage, names, "triage-db-v2099.01.01", True)
+
+    return dest, swap, "installed databases were not changed"
+
+
+def _stop_after(monkeypatch, n: int) -> list[tuple]:
+    """os.replace raises KeyboardInterrupt just after its ``n``-th call returns (0:
+    never); every call is listed."""
+    calls: list[tuple] = []
+    real = os.replace
+
+    def replace(src, dst):
+        real(src, dst)
+        calls.append((src, dst))
+        if len(calls) == n:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(os, "replace", replace)
+    return calls
+
+
+@pytest.mark.parametrize("leg", [_rag_swap, _triage_swap], ids=["rag", "triage"])
+def test_d6_a_ctrl_c_just_after_any_move_in_the_swap_is_undone(
+    leg, request, tmp_path, monkeypatch, capsys
+):
+    _, swap, _ = leg(request, tmp_path / "count")
+    with monkeypatch.context() as m:
+        calls = _stop_after(m, 0)
+        assert swap() == "installed"
+    moves = len(calls)
+    assert moves >= 9, "the swap made fewer moves than its files need"
+    capsys.readouterr()
+    for n in range(1, moves + 1):
+        dest, swap, line = leg(request, tmp_path / str(n))
+        before = _tree(dest)
+        with monkeypatch.context() as m:
+            _stop_after(m, n)
+            got = _run(swap)
+        assert _tree(dest) == before, f"a stop after move {n} of {moves} changed dest"
+        assert got == "undone", f"a stop after move {n} of {moves}: {got}"
+        assert line in capsys.readouterr().out, f"a stop after move {n} of {moves}"
 
 
 # --- Y3 (RAG leg): a killed run's stage is removed before the free-space check -------

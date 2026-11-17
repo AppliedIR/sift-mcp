@@ -321,11 +321,11 @@ def _swap_in(
     old files are left in ``stage/old``)."""
     old = stage / "old"
     old.mkdir()
-    done = []  # (from, to) for each move made, in order
+    done = []  # (from, to) for each move begun, in order
 
     def move(src: Path, dst: Path) -> None:
+        done.append((src, dst))  # first, so a stop after it is undone
         os.replace(src, dst)
-        done.append((src, dst))
 
     try:
         if _exists(dest / TAG_FILE):
@@ -351,7 +351,8 @@ def _swap_in(
         failed = f"\ninstalling into {dest} failed: {e or type(e).__name__}"
         try:
             for src, dst in reversed(done):
-                os.replace(dst, src)
+                if _exists(dst):  # else that move never happened
+                    os.replace(dst, src)
         except OSError as undo:
             print(failed)
             print(

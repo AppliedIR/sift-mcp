@@ -308,13 +308,14 @@ def _swap_in(dest: Path, stage: Path) -> str:
         for name in dict.fromkeys(m.split("/")[0] for m in constants.BUNDLE_MEMBERS):
             for src, dst in ((dest / name, old / name), (stage / name, dest / name)):
                 if src.exists() or src.is_symlink():
+                    done.append((src, dst))  # first, so a stop after it is undone
                     os.replace(src, dst)
-                    done.append((src, dst))
     except BaseException as e:  # a Ctrl-C too
         print(f"\nInstalling into {dest} failed: {e or type(e).__name__}")
         try:
             for src, dst in reversed(done):
-                os.replace(dst, src)
+                if dst.exists() or dst.is_symlink():  # else that move never happened
+                    os.replace(dst, src)
         except OSError as undo:
             print(f"Undoing it failed too: {undo}. The files it replaced are in {old}.")
             return "kept"
