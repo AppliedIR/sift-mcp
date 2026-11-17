@@ -78,6 +78,13 @@ ROWS = {
     "iv_b_a_unit_with_no_other_name": (
         [("evidence/rd01.E01", host("RD01", *TPL)), ("evidence/tpl.vhdx", TPL)],
         [], [], [(0, "tpl-packer")]),
+    "v_two_collectors_forwarding_one_machine": (
+        [("evidence/a/wec01", host("WEC01", fwd("SRV01"))),
+         ("evidence/b/wec02", host("WEC02", fwd("SRV01")))],
+        [], [], [(0, "SRV01"), (1, "SRV01"), (0, "WEC01"), (1, "WEC02")]),
+    "v_b_a_collector_and_the_forwarded_machine_with_a_second_name": (
+        [("evidence/a/wec01", host("WEC01", fwd("SRV01"))), ("evidence/srv01", host("SRV01", *TPL))],
+        [], [], [(0, "SRV01"), (1, "SRV01"), (0, "WEC01"), (1, "tpl-packer")]),
 }  # fmt: skip
 
 
