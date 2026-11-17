@@ -85,6 +85,10 @@ ROWS = {
     "v_b_a_collector_and_the_forwarded_machine_with_a_second_name": (
         [("evidence/a/wec01", host("WEC01", fwd("SRV01"))), ("evidence/srv01", host("SRV01", *TPL))],
         [], [], [(0, "SRV01"), (1, "SRV01"), (0, "WEC01"), (1, "tpl-packer")]),
+    "v_c_two_units_naming_one_machine_in_a_host_column": (  # the names scan's row-column evidence
+        [("evidence/a/wks01", host("WKS01", ("SRV01", "evidence/a/wks01/logons.csv host column"))),
+         ("evidence/b/wks02", host("WKS02", ("SRV01", "evidence/b/wks02/logons.csv host column")))],
+        [], [], [(0, "SRV01"), (1, "SRV01"), (0, "WKS01"), (1, "WKS02")]),
 }  # fmt: skip
 
 
