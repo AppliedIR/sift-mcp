@@ -293,43 +293,6 @@ def _refuse_artifact(n: int, problem: str, send: str) -> dict:
             "error": f"Artifact {n}: {problem}. Send {send}. The finding wasn't recorded."}  # fmt: skip
 
 
-def _distinct_links(links: list) -> list:
-    """A chain's links with exact repeats dropped (equal with keys sorted)
-    within each record's segment: the steps up to and including a record
-    link (one with a document and no output file). Each is kept where it
-    first appears in its segment. A fan-in step reaches one link once per
-    input it read; a step two records' chains share stays in both, as the
-    Portal groups each record under the steps just before it."""
-    seen: set[str] = set()
-    out = []
-    for link in links:
-        key = json.dumps(link, sort_keys=True, default=str)
-        if key not in seen:
-            seen.add(key)
-            out.append(link)
-        if _is_record_link(link):
-            seen = set()
-    return out
-
-
-def _js_truthy(v) -> bool:
-    if isinstance(v, (dict, list)):
-        return True  # an empty object or array is truthy in the Portal
-    return bool(v) and not (isinstance(v, float) and v != v)
-
-
-def _is_record_link(link) -> bool:
-    """The Portal's test for a record link: an object document and no output
-    file (index.html isRecord)."""
-    if not isinstance(link, dict):
-        return False
-    doc, to = link.get("document"), link.get("to")
-    to_path = to.get("path") if isinstance(to, dict) else None
-    return isinstance(doc, (dict, list)) and not (
-        _js_truthy(to) and _js_truthy(to_path)
-    )
-
-
 _MAX_ALTERNATIVES = 10
 _MAX_ALTERNATIVE_IDS = 10
 _MAX_SKEPTIC_IDS = 20
@@ -1461,7 +1424,7 @@ class CaseManager:
                 art.update(
                     provenance_grade=t.grade,
                     provenance_reason=t.reason,
-                    provenance_chain=_distinct_links(t.links),
+                    provenance_chain=t.links,
                     provenance_root=t.root,
                     provenance_roots=t.roots,
                     provenance_candidates=t.candidates,

@@ -6,15 +6,12 @@ Uses test_finding_chains' own case, entries and helpers.
 """
 
 import collections
-import gzip
 import json
 import re
 import shutil
 import subprocess
-from pathlib import Path
 
 import pytest
-from forensic_mcp.case import manager
 from sift_common import provenance as pv
 from test_case_dashboard.test_portal_chain_steps_once import chain_panel
 from test_case_dashboard.test_portal_provenance_display import DRIVER, PAGE
@@ -84,17 +81,6 @@ def test_a_chain_with_no_repeats_is_stored_as_traced(c):
     )
     assert g(res, st)[0] == "FULL", g(res, st)
     assert st["artifacts"][0]["provenance_chain"] == json.loads(json.dumps(t.links))
-
-
-def test_a_stored_fan_in_chain_keeps_each_link_once_first_kept():
-    fixture = Path(__file__).parents[1] / "fixtures" / "fan_in_chain.json.gz"
-    chain = json.loads(gzip.decompress(fixture.read_bytes()))[0]["artifacts"][0][
-        "provenance_chain"
-    ]
-    kept = manager._distinct_links(chain)
-    assert (len(chain), len(kept)) == (1082, 364)
-    assert [_key(x) for x in kept] == list(dict.fromkeys(_key(x) for x in chain))
-    assert kept[0] is chain[0]
 
 
 # --- each shape: record_finding -> the stored chain -> the Portal's chain -------
@@ -264,32 +250,6 @@ def test_each_ingests_steps_are_stored_once_and_render_with_their_records(
         assert _short(stored) == [*Z_X, "I1", "d1", *Z_X, "I2", "d2", *Z_X, "I1", "d3"]
         st["artifacts"][0]["provenance_chain"] = stored
     assert _portal(st, aid) == steps
-
-
-LINK_SHAPES = [
-    {"document": d, **({} if t is None else {"to": t})}
-    for d in ({"_id": "d1"}, {}, [], None, "d1", 0, 1)
-    for t in (None, {}, {"path": ""}, {"path": "/x"}, {"path": []}, {"path": {}},
-              {"path": 0}, {"path": float("nan")}, "/x", [], 1)
-] + [{}, {"to": {"path": "/x"}}, "x", 1, []]  # fmt: skip
-
-
-def test_a_record_link_is_the_one_the_portal_groups_records_by():
-    """manager's record test answers as the page's isRecord for each shape (each
-    shape is JSON text, NaN read as JS reads it)."""
-    js = re.search(r"function isRecord\(step\) \{.*?\n    \}", PAGE.read_text(), re.S)
-    node = shutil.which("node") or pytest.skip("node isn't installed")
-    script = (
-        js[0]
-        + """
-const shapes = JSON.parse(require('fs').readFileSync(0, 'utf8'));
-process.stdout.write(JSON.stringify(shapes.map(s => !!isRecord(eval('(' + s + ')')))));"""
-    )
-    r = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60,
-                       input=json.dumps([json.dumps(x) for x in LINK_SHAPES]))  # fmt: skip
-    assert r.returncode == 0, r.stderr[-2000:]
-    mine = [manager._is_record_link(x) for x in LINK_SHAPES]
-    assert mine == json.loads(r.stdout) and sum(mine) == 24, mine
 
 
 # --- content over 5000 chars ---------------------------------------------------
