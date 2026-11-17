@@ -164,6 +164,31 @@ def test_d3_a_failed_check_exits_with_one_line_naming_the_cause(
     assert not (tmp_path / "dest").exists() or not any((tmp_path / "dest").iterdir())
 
 
+# --- D-2 (sift leg): the newest is the first usable release GitHub lists ------------
+
+
+def test_d2_the_newest_is_the_first_usable_release_listed(monkeypatch):
+    full = [{"name": n} for n in dd.ASSETS]
+    releases = [
+        {"tag_name": "prerelease", "prerelease": True, "assets": full},
+        {"tag_name": "missing-asset", "prerelease": False, "assets": full[1:]},
+        {"tag_name": "usable", "prerelease": False, "assets": full},
+        {"tag_name": "older-usable", "prerelease": False, "assets": full},
+    ]
+    urls = []
+
+    def urlopen(req, timeout=None):
+        urls.append(req.full_url)
+        return _Response(json.dumps(releases).encode())
+
+    monkeypatch.setattr(dd, "_github_headers", dict)  # no `gh auth token` run
+    monkeypatch.setattr(dd.urllib.request, "urlopen", urlopen)
+    assert dd._newest_release() == releases[2]
+    assert len(urls) == 1
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(urls[0]).query)
+    assert query == {"per_page": ["100"]}
+
+
 # --- Y5 (sift leg): a DB changed since install is "unknown" --------------------------
 
 

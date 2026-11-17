@@ -279,6 +279,24 @@ def test_d8_a_named_release_installs_with_its_tag(rag, tmp_path):
     assert _stages(dest) == []
 
 
+@pytest.mark.parametrize(
+    "installed, code", [(True, 0), (False, 1)], ids=["installed", "failed"]
+)
+def test_d8_main_downloads_the_named_tag_into_dest_and_exits_by_the_result(
+    rag, tmp_path, monkeypatch, installed, code
+):
+    calls = []
+
+    def download_index(dest, tag="latest"):
+        calls.append((dest, tag))
+        return installed
+
+    monkeypatch.setattr(rag.mod, "download_index", download_index)
+    dest = tmp_path / "dest"
+    assert _main(rag.mod, monkeypatch, "--dest", str(dest), "--tag", TAG) == code
+    assert calls == [(dest, TAG)]
+
+
 def test_d8_a_release_without_this_versions_assets_is_refused_before_any_download(
     rag, tmp_path, capsys
 ):
