@@ -98,7 +98,7 @@ def check(dest: Path) -> dict:
     except (OSError, ValueError, AttributeError):
         installed = None
     return {
-        "installed": installed,
+        "installed": installed or "unknown",
         "absent": not (dest / "chroma").is_dir(),
         "newest": release.get("tag_name"),
         "download_bytes": _download_bytes(release),

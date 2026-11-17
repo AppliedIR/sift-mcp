@@ -244,7 +244,7 @@ def check(dest_dir: str | Path) -> dict:
     release = _newest_release() or {}
     paths = [dest / name for name in release_manifest.default_databases()]
     return {
-        "installed": read_installed_tag(dest),
+        "installed": read_installed_tag(dest) or "unknown",
         "absent": any(not p.is_file() or p.stat().st_size == 0 for p in paths),
         "newest": release.get("tag_name"),
         "download_bytes": _sizes(
