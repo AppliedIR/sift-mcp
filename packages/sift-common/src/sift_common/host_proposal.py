@@ -524,6 +524,18 @@ def propose(state: hi.HostState) -> list[Group]:
     groups: dict = {}
     for p in sorted(pairs):
         groups.setdefault(uf.find(p), []).append(p)
+    # A name of more than one machine (a template or clone build): two of its
+    # units are apart each way, each with an own name in another group that
+    # holds none of the other's own names.
+    own_in: dict[str, set] = {}
+    for p in pairs:
+        if p not in foreign and p not in never:
+            own_in.setdefault(p[0], set()).add(uf.find(p))
+    for r, ps in groups.items():
+        us = sorted({p[0] for p in ps})
+        a = [own_in.get(u, set()) - {r} for u in us]
+        if any(a[i] - a[j] and a[j] - a[i] for i in range(len(us)) for j in range(i)):
+            shared.update(ps)
     free = host_gate.released(state)
     groups = {
         r: ps
